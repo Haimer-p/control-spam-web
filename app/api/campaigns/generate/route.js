@@ -74,15 +74,40 @@ export async function POST(request) {
     const normalizedMint = String(meta.mintAddress || '').trim();
     const normalizedPair = String(meta.pairAddress || '').trim();
 
-    const existing =
-      all.find((c) => normalizedMint && c.mintAddress && c.mintAddress === normalizedMint) ||
-      all.find((c) => normalizedPair && c.pairAddress && c.pairAddress === normalizedPair) ||
-      (await db.getCampaignBySlug(campaignData.slug)) ||
-      all.find((c) => String(c.symbol || '').toUpperCase() === normalizedSymbol);
+    const existingByMint =
+      normalizedMint ? all.find((c) => c.mintAddress && c.mintAddress === normalizedMint) : null;
+    const existingByPair =
+      normalizedPair ? all.find((c) => c.pairAddress && c.pairAddress === normalizedPair) : null;
+    const existingBySlug = await db.getCampaignBySlug(campaignData.slug);
+    const existingBySymbol = all.find(
+      (c) => String(c.symbol || '').toUpperCase() === normalizedSymbol
+    );
+
+    let existing = existingByMint || existingByPair || existingBySlug || existingBySymbol;
+
+    // If slug already belongs to another campaign, always update that one to avoid slug unique conflicts.
+    if (
+      existing?._id &&
+      existingBySlug?._id &&
+      String(existing._id) !== String(existingBySlug._id)
+    ) {
+      existing = existingBySlug;
+    }
 
     if (existing?._id) {
-      const campaign = await db.updateCampaign(existing._id, campaignData);
-      return json({ meta, generated, campaign, updated: true });
+      try {
+        const campaign = await db.updateCampaign(existing._id, campaignData);
+        return json({ meta, generated, campaign, updated: true });
+      } catch (err) {
+        if (err?.code === 11000) {
+          const slugOwner = await db.getCampaignBySlug(campaignData.slug);
+          if (slugOwner?._id) {
+            const campaign = await db.updateCampaign(slugOwner._id, campaignData);
+            return json({ meta, generated, campaign, updated: true, resolvedBySlugOwner: true });
+          }
+        }
+        throw err;
+      }
     }
 
     const campaign = await db.createCampaign(campaignData);
