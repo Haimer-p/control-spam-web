@@ -1,23 +1,56 @@
 const { getDb } = require('../../../lib/db');
 const { checkAuth, unauthorized, json, error } = require('../../../lib/api');
+const { validateBatchSelection } = require('../../../lib/batch-profiles');
 
 export async function POST(request) {
   if (!checkAuth(request)) return unauthorized();
   try {
     const body = await request.json();
-    const { action, campaignId, runProfile, accountNames, configFile } = body;
+    const {
+      action,
+      campaignId,
+      campaignIds = [],
+      configFiles = [],
+      runProfile,
+      accountNames,
+      configFile,
+      maxConcurrent,
+    } = body;
     if (!action) return error('action required');
 
     const db = await getDb();
 
-    if (action === 'start' && campaignId) {
+    const ids = [
+      ...new Set([
+        ...(Array.isArray(campaignIds) ? campaignIds : []),
+        ...(campaignId ? [campaignId] : []),
+      ].map(String).filter(Boolean)),
+    ];
+    const files = [
+      ...new Set([
+        ...(Array.isArray(configFiles) ? configFiles : []),
+        ...(configFile ? [configFile] : []),
+      ].map(String).filter(Boolean)),
+    ];
+
+    if (action === 'start') {
       const runtime = await db.getBotRuntime();
       if (runtime?.running) return error('Bot already running', 409);
+
+      if (ids.length || files.length) {
+        await validateBatchSelection({ campaignIds: ids, configFiles: files });
+      } else if (!campaignId && !configFile) {
+        return error('campaignIds, campaignId, configFiles, or configFile required for start');
+      }
     }
 
     const cmd = await db.createCommand({
       action,
       campaignId: campaignId || undefined,
+      campaignIds: ids,
+      configFiles: files,
+      maxConcurrentOverride:
+        maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
       runProfile: runProfile || 'vua',
       accountNames: accountNames || [],
       configFile,
