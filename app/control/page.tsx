@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch, useApiPoll } from '@/lib/client';
-import { Play, Square, Stethoscope, UserCheck } from 'lucide-react';
+import { Play, Square, Stethoscope, UserCheck, Search } from 'lucide-react';
 
 type Campaign = {
   _id: string;
@@ -60,6 +60,21 @@ function findDuplicateAccounts(
   return [...new Set(duplicates)];
 }
 
+function filterSort<T>(
+  items: T[],
+  query: string,
+  getSearchText: (item: T) => string,
+  getSortKey: (item: T) => string
+) {
+  const q = query.trim().toLowerCase();
+  let list = [...items];
+  if (q) {
+    list = list.filter((item) => getSearchText(item).toLowerCase().includes(q));
+  }
+  list.sort((a, b) => getSortKey(a).localeCompare(getSortKey(b), undefined, { sensitivity: 'base' }));
+  return list;
+}
+
 export default function ControlPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [fileConfigs, setFileConfigs] = useState<FileConfig[]>([]);
@@ -70,6 +85,9 @@ export default function ControlPage() {
   const [runProfile, setRunProfile] = useState('vua');
   const [maxConcurrent, setMaxConcurrent] = useState(2);
   const [msg, setMsg] = useState('');
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [configSearch, setConfigSearch] = useState('');
+  const [accountSearch, setAccountSearch] = useState('');
 
   const { data: runtime, reload } = useApiPoll<{
     online: boolean;
@@ -107,6 +125,46 @@ export default function ControlPage() {
     () => findDuplicateAccounts(campaigns, fileConfigs, selectedCampaignIds, selectedConfigFiles),
     [campaigns, fileConfigs, selectedCampaignIds, selectedConfigFiles]
   );
+
+  const filteredCampaigns = useMemo(
+    () =>
+      filterSort(
+        campaigns,
+        campaignSearch,
+        (c) => `${c.symbol} ${c.slug}`,
+        (c) => c.symbol || c.slug
+      ),
+    [campaigns, campaignSearch]
+  );
+
+  const filteredFileConfigs = useMemo(
+    () =>
+      filterSort(
+        fileConfigs,
+        configSearch,
+        (f) => `${f.name} ${f.path}`,
+        (f) => f.name
+      ),
+    [fileConfigs, configSearch]
+  );
+
+  const filteredAccounts = useMemo(
+    () =>
+      filterSort(
+        accounts,
+        accountSearch,
+        (a) => a.name,
+        (a) => a.name
+      ),
+    [accounts, accountSearch]
+  );
+
+  useEffect(() => {
+    if (!filteredAccounts.length) return;
+    setLoginAccountName((prev) =>
+      filteredAccounts.some((a) => a.name === prev) ? prev : filteredAccounts[0].name
+    );
+  }, [filteredAccounts]);
 
   const totalAccounts = useMemo(() => {
     let n = 0;
@@ -217,8 +275,17 @@ export default function ControlPage() {
 
         <div>
           <label className="label">Campaigns (DB)</label>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-muted pointer-events-none" />
+            <input
+              className="input pl-9 text-sm"
+              placeholder="Tìm symbol, slug..."
+              value={campaignSearch}
+              onChange={(e) => setCampaignSearch(e.target.value)}
+            />
+          </div>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {campaigns.map((c) => (
+            {filteredCampaigns.map((c) => (
               <label
                 key={c._id}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer ${
@@ -239,16 +306,27 @@ export default function ControlPage() {
                 </span>
               </label>
             ))}
-            {!campaigns.length && (
+            {!campaigns.length ? (
               <p className="text-sm text-surface-muted">Không có campaign</p>
-            )}
+            ) : !filteredCampaigns.length ? (
+              <p className="text-sm text-surface-muted">Không khớp &quot;{campaignSearch}&quot;</p>
+            ) : null}
           </div>
         </div>
 
         <div>
           <label className="label">File configs (legacy)</label>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-muted pointer-events-none" />
+            <input
+              className="input pl-9 text-sm"
+              placeholder="Tìm tên file config..."
+              value={configSearch}
+              onChange={(e) => setConfigSearch(e.target.value)}
+            />
+          </div>
           <div className="space-y-2 max-h-40 overflow-y-auto">
-            {fileConfigs.map((f) => (
+            {filteredFileConfigs.map((f) => (
               <label
                 key={f.path}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer ${
@@ -268,11 +346,13 @@ export default function ControlPage() {
                 </span>
               </label>
             ))}
-            {!fileConfigs.length && (
+            {!fileConfigs.length ? (
               <p className="text-sm text-surface-muted">
                 Không tìm thấy configs/*.json (chỉ có trên máy chạy worker)
               </p>
-            )}
+            ) : !filteredFileConfigs.length ? (
+              <p className="text-sm text-surface-muted">Không khớp &quot;{configSearch}&quot;</p>
+            ) : null}
           </div>
         </div>
 
@@ -335,17 +415,29 @@ export default function ControlPage() {
         <h3 className="font-semibold">Login 1 account (giữ browser mở)</h3>
         <div>
           <label className="label">Account</label>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-muted pointer-events-none" />
+            <input
+              className="input pl-9 text-sm"
+              placeholder="Tìm tên account..."
+              value={accountSearch}
+              onChange={(e) => setAccountSearch(e.target.value)}
+            />
+          </div>
           <select
             className="input"
             value={loginAccountName}
             onChange={(e) => setLoginAccountName(e.target.value)}
           >
-            {accounts.map((a) => (
+            {filteredAccounts.map((a) => (
               <option key={a.name} value={a.name}>
                 {a.name}
               </option>
             ))}
           </select>
+          {accounts.length > 0 && !filteredAccounts.length && (
+            <p className="text-xs text-surface-muted mt-1">Không khớp &quot;{accountSearch}&quot;</p>
+          )}
         </div>
         <button
           className="btn btn-ghost w-full sm:w-auto justify-center"
