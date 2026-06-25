@@ -32,6 +32,9 @@ export async function POST(request) {
         ...(configFile ? [configFile] : []),
       ].map(String).filter(Boolean)),
     ];
+    const names = Array.isArray(accountNames)
+      ? accountNames.map((n) => String(n).trim()).filter(Boolean)
+      : [];
 
     if (action === 'start') {
       const runtime = await db.getBotRuntime();
@@ -55,7 +58,7 @@ export async function POST(request) {
         maxConcurrentOverride:
           maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
         runProfile: runProfile || 'vua',
-        accountNames: accountNames || [],
+        accountNames: names,
         configFile,
       });
 
@@ -69,6 +72,26 @@ export async function POST(request) {
       );
     }
 
+    if (action === 'appeal') {
+      const runtime = await db.getBotRuntime();
+      if (runtime?.running) return error('Bot is running — stop it before appeal', 409);
+      if (runtime?.appealRunning) return error('Appeal already in progress', 409);
+      if (!names.length) return error('accountNames required for appeal', 400);
+    }
+
+    if (action === 'health_check') {
+      const runtime = await db.getBotRuntime();
+      if (runtime?.running) return error('Bot is running — stop it before health check', 409);
+      if (runtime?.appealRunning) return error('Appeal in progress', 409);
+    }
+
+    if (action === 'login_account') {
+      const runtime = await db.getBotRuntime();
+      if (runtime?.running) return error('Bot is running — stop it before login', 409);
+      if (runtime?.appealRunning) return error('Appeal in progress', 409);
+      if (!names.length) return error('accountNames required for login_account', 400);
+    }
+
     const cmd = await db.createCommand({
       action,
       campaignId: campaignId || undefined,
@@ -77,7 +100,7 @@ export async function POST(request) {
       maxConcurrentOverride:
         maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
       runProfile: runProfile || 'vua',
-      accountNames: accountNames || [],
+      accountNames: names,
       configFile,
     });
 
