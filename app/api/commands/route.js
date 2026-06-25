@@ -37,11 +37,36 @@ export async function POST(request) {
       const runtime = await db.getBotRuntime();
       if (runtime?.running) return error('Bot already running', 409);
 
+      let batchPreview = null;
       if (ids.length || files.length) {
-        await validateBatchSelection({ campaignIds: ids, configFiles: files });
+        batchPreview = await validateBatchSelection({ campaignIds: ids, configFiles: files });
+        if (batchPreview.totalAccounts === 0 && !batchPreview.sources.some((s) => s.unverified)) {
+          return error('No accounts to run after batch merge', 400);
+        }
       } else if (!campaignId && !configFile) {
         return error('campaignIds, campaignId, configFiles, or configFile required for start');
       }
+
+      const cmd = await db.createCommand({
+        action,
+        campaignId: campaignId || undefined,
+        campaignIds: ids,
+        configFiles: files,
+        maxConcurrentOverride:
+          maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
+        runProfile: runProfile || 'vua',
+        accountNames: accountNames || [],
+        configFile,
+      });
+
+      return json(
+        {
+          command: cmd,
+          skippedDuplicates: batchPreview?.skippedDuplicates || [],
+          totalAccounts: batchPreview?.totalAccounts,
+        },
+        201
+      );
     }
 
     const cmd = await db.createCommand({

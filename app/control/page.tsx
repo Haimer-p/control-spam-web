@@ -23,19 +23,31 @@ type Account = { name: string; enabled?: boolean };
 
 type ActiveSource = { type: string; name: string; accountCount?: number };
 
-function findDuplicateAccounts(
+type SkippedDuplicate = {
+  account: string;
+  keptSource: string;
+  skippedSource: string;
+};
+
+function computeBatchPreview(
   campaigns: Campaign[],
   fileConfigs: FileConfig[],
   selectedCampaignIds: string[],
   selectedConfigFiles: string[]
 ) {
   const seen = new Map<string, string>();
-  const duplicates: string[] = [];
+  const skippedDuplicates: SkippedDuplicate[] = [];
+  let rawTotal = 0;
 
-  const addAccounts = (sourceName: string, names: string[]) => {
+  const processSource = (sourceName: string, names: string[]) => {
     for (const name of names) {
+      rawTotal += 1;
       if (seen.has(name)) {
-        duplicates.push(`${name} (${seen.get(name)} + ${sourceName})`);
+        skippedDuplicates.push({
+          account: name,
+          keptSource: seen.get(name)!,
+          skippedSource: sourceName,
+        });
       } else {
         seen.set(name, sourceName);
       }
@@ -48,16 +60,16 @@ function findDuplicateAccounts(
     const names = (c.accounts || [])
       .filter((a) => a.enabled !== false)
       .map((a) => a.name);
-    addAccounts(c.slug, names);
+    processSource(c.slug, names);
   }
 
   for (const path of selectedConfigFiles) {
     const f = fileConfigs.find((x) => x.path === path);
     if (!f) continue;
-    addAccounts(f.name, f.accounts);
+    processSource(f.name, f.accounts);
   }
 
-  return [...new Set(duplicates)];
+  return { skippedDuplicates, effectiveTotal: seen.size, rawTotal };
 }
 
 function filterSort<T>(
@@ -121,10 +133,18 @@ export default function ControlPage() {
       .catch(() => setAccounts([]));
   }, []);
 
-  const duplicates = useMemo(
-    () => findDuplicateAccounts(campaigns, fileConfigs, selectedCampaignIds, selectedConfigFiles),
+  const batchPreview = useMemo(
+    () =>
+      computeBatchPreview(
+        campaigns,
+        fileConfigs,
+        selectedCampaignIds,
+        selectedConfigFiles
+      ),
     [campaigns, fileConfigs, selectedCampaignIds, selectedConfigFiles]
   );
+
+  const { skippedDuplicates, effectiveTotal, rawTotal } = batchPreview;
 
   const filteredCampaigns = useMemo(
     () =>
@@ -166,20 +186,7 @@ export default function ControlPage() {
     );
   }, [filteredAccounts]);
 
-  const totalAccounts = useMemo(() => {
-    let n = 0;
-    for (const id of selectedCampaignIds) {
-      const c = campaigns.find((x) => x._id === id);
-      if (c) {
-        n += (c.accounts || []).filter((a) => a.enabled !== false).length;
-      }
-    }
-    for (const path of selectedConfigFiles) {
-      const f = fileConfigs.find((x) => x.path === path);
-      if (f) n += f.accountCount;
-    }
-    return n;
-  }, [campaigns, fileConfigs, selectedCampaignIds, selectedConfigFiles]);
+  const totalAccounts = effectiveTotal;
 
   const toggleCampaign = (id: string) => {
     setSelectedCampaignIds((prev) =>
@@ -196,21 +203,27 @@ export default function ControlPage() {
   const send = async (action: string, payload: Record<string, unknown> = {}) => {
     setMsg('');
     try {
-      await apiFetch('/api/commands', {
+      const res = (await apiFetch('/api/commands', {
         method: 'POST',
         body: JSON.stringify({
           action,
           runProfile,
           ...payload,
         }),
-      });
-      setMsg(
+      })) as { skippedDuplicates?: SkippedDuplicate[] };
+      let text =
         action === 'stop'
           ? 'Đã gửi lệnh stop — bot sẽ dừng sau khi xong action hiện tại (có thể vài phút)'
           : action === 'login_account'
             ? 'Đã mở browser login. Browser sẽ giữ nguyên đến khi bạn bấm Stop hoặc tự đóng browser.'
-            : `Đã gửi lệnh ${action} — worker sẽ xử lý trong vài giây`
-      );
+            : `Đã gửi lệnh ${action} — worker sẽ xử lý trong vài giây`;
+      if (res.skippedDuplicates?.length) {
+        const skips = res.skippedDuplicates
+          .map((d) => `${d.account}: giữ [${d.keptSource}], skip [${d.skippedSource}]`)
+          .join('; ');
+        text += `. Cảnh báo trùng account: ${skips}`;
+      }
+      setMsg(text);
       reload();
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : 'Error');
@@ -222,8 +235,8 @@ export default function ControlPage() {
       setMsg('Chọn ít nhất 1 campaign hoặc file config');
       return;
     }
-    if (duplicates.length) {
-      setMsg(`Trùng account: ${duplicates.join(', ')}`);
+    if (effectiveTotal === 0) {
+      setMsg('Không có account nào để chạy');
       return;
     }
     send('start', {
@@ -235,8 +248,7 @@ export default function ControlPage() {
 
   const canStart =
     (selectedCampaignIds.length > 0 || selectedConfigFiles.length > 0) &&
-    duplicates.length === 0 &&
-    totalAccounts > 0;
+    effectiveTotal > 0;
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -358,12 +370,21 @@ export default function ControlPage() {
 
         <p className="text-sm">
           Tổng: {selectedCampaignIds.length} campaign + {selectedConfigFiles.length} file ={' '}
-          <strong>{totalAccounts}</strong> accounts
+          <strong>{totalAccounts}</strong> accounts sẽ chạy
+          {skippedDuplicates.length > 0 && rawTotal > totalAccounts && (
+            <span className="text-surface-muted">
+              {' '}
+              ({rawTotal - totalAccounts} trùng sẽ skip)
+            </span>
+          )}
         </p>
 
-        {duplicates.length > 0 && (
-          <p className="text-sm text-accent-red">
-            Trùng account: {duplicates.join(', ')}
+        {skippedDuplicates.length > 0 && (
+          <p className="text-sm text-amber-400">
+            Account trùng — ưu tiên config chọn trước:{' '}
+            {skippedDuplicates
+              .map((d) => `${d.account}: giữ [${d.keptSource}], skip [${d.skippedSource}]`)
+              .join('; ')}
           </p>
         )}
 
@@ -405,7 +426,13 @@ export default function ControlPage() {
           </button>
         </div>
         {msg && (
-          <p className={`text-sm ${msg.startsWith('Trùng') || msg.includes('Error') || msg.includes('required') ? 'text-accent-red' : 'text-accent-green'}`}>
+          <p className={`text-sm ${
+            msg.includes('Error') || msg.includes('required') || msg.startsWith('Không')
+              ? 'text-accent-red'
+              : msg.includes('Cảnh báo')
+                ? 'text-amber-400'
+                : 'text-accent-green'
+          }`}>
             {msg}
           </p>
         )}

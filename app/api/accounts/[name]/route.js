@@ -23,6 +23,17 @@ export async function PATCH(request, { params }) {
   if (!checkAuth(request)) return unauthorized();
   try {
     const body = await request.json();
+    const validStatuses = ['alive', 'partial', 'suspended', 'dead', null];
+    if (body.lastHealthStatus !== undefined) {
+      const status = body.lastHealthStatus === '' ? null : body.lastHealthStatus;
+      if (!validStatuses.includes(status)) {
+        return error('lastHealthStatus must be alive, partial, suspended, dead, or null');
+      }
+      body.lastHealthStatus = status;
+      if (body.lastHealthAt === undefined) {
+        body.lastHealthAt = new Date().toISOString();
+      }
+    }
     const db = await getDb();
     const acc = await db.updateAccount(params.name, body);
     if (!acc) return error('Not found', 404);
