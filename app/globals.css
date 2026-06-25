@@ -46,6 +46,7 @@ body {
 .badge-suspended { @apply bg-orange-900/50 text-orange-400; }
 .badge-partial { @apply bg-yellow-900/50 text-yellow-400; }
 .badge-dead { @apply bg-red-900/50 text-red-400; }
+.badge-unknown { @apply bg-gray-800 text-gray-400; }
 
 .page-header {
   @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3;
