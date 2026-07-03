@@ -96,6 +96,7 @@ export default function ControlPage() {
   const [loginAccountName, setLoginAccountName] = useState('');
   const [runProfile, setRunProfile] = useState('vua');
   const [maxConcurrent, setMaxConcurrent] = useState(2);
+  const [maxConcurrentTouched, setMaxConcurrentTouched] = useState(false);
   const [msg, setMsg] = useState('');
   const [campaignSearch, setCampaignSearch] = useState('');
   const [configSearch, setConfigSearch] = useState('');
@@ -187,6 +188,12 @@ export default function ControlPage() {
   }, [filteredAccounts]);
 
   const totalAccounts = effectiveTotal;
+
+  // Mặc định Max concurrent = số account được chọn, cho tới khi user tự chỉnh
+  useEffect(() => {
+    if (maxConcurrentTouched) return;
+    if (effectiveTotal > 0) setMaxConcurrent(effectiveTotal);
+  }, [effectiveTotal, maxConcurrentTouched]);
 
   const toggleCampaign = (id: string) => {
     setSelectedCampaignIds((prev) =>
@@ -405,8 +412,16 @@ export default function ControlPage() {
               min={1}
               max={Math.max(1, totalAccounts || 6)}
               value={maxConcurrent}
-              onChange={(e) => setMaxConcurrent(Math.max(1, +e.target.value || 2))}
+              onChange={(e) => {
+                setMaxConcurrentTouched(true);
+                setMaxConcurrent(Math.max(1, +e.target.value || 1));
+              }}
             />
+            <p className="text-xs text-surface-muted mt-1">
+              {maxConcurrentTouched
+                ? 'Đang dùng giá trị tự chỉnh'
+                : 'Mặc định = số account được chọn'}
+            </p>
           </div>
         </div>
 
