@@ -28,7 +28,8 @@ export async function POST(request) {
 
     const meta = await fetchTokenFromDexUrl(dexUrl);
     const generated = await generateKeywords(meta, {
-      count: body.keywordCount || 60,
+      count: body.keywordCount,
+      minPerAccount: body.minKeywordsPerAccount || 20,
       accountNames,
     });
 

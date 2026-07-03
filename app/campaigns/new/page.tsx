@@ -8,15 +8,15 @@ import { Sparkles } from 'lucide-react';
 type Account = { name: string; lastHealthStatus?: string };
 
 const DEFAULT_RATIOS = {
-  like: 0.03,
-  retweet: 0.03,
-  reply: 0.28,
+  like: 0.02,
+  retweet: 0.02,
+  reply: 0.12,
   follow: 0.02,
-  like_retweet: 0.03,
-  like_reply: 0.32,
-  like_retweet_reply: 0.25,
+  like_retweet: 0.04,
+  like_reply: 0.08,
+  like_retweet_reply: 0.08,
   like_follow: 0.02,
-  like_retweet_follow: 0.02,
+  like_retweet_follow: 0.6,
 };
 
 export default function NewCampaignPage() {
@@ -27,6 +27,7 @@ export default function NewCampaignPage() {
   const [ratiosJson, setRatiosJson] = useState(JSON.stringify(DEFAULT_RATIOS, null, 2));
   const [keywordsPerRun, setKeywordsPerRun] = useState(25);
   const [tweetsPerKeyword, setTweetsPerKeyword] = useState(15);
+  const [minKeywordsPerAccount, setMinKeywordsPerAccount] = useState(20);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [err, setErr] = useState('');
@@ -58,6 +59,7 @@ export default function NewCampaignPage() {
           dexUrl,
           accountNames: selected,
           save,
+          minKeywordsPerAccount,
           defaults: {
             interactions: {
               keywordsPerRun,
@@ -140,6 +142,16 @@ export default function NewCampaignPage() {
                 type="number"
                 value={tweetsPerKeyword}
                 onChange={(e) => setTweetsPerKeyword(+e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Min keywords / account</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={minKeywordsPerAccount}
+                onChange={(e) => setMinKeywordsPerAccount(Math.max(1, +e.target.value || 20))}
               />
             </div>
           </div>
