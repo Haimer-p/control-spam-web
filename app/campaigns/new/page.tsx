@@ -4,20 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/client';
 import { Sparkles } from 'lucide-react';
+import { DEFAULT_COMBO_RATIOS } from '@/lib/combo-ratios';
 
 type Account = { name: string; lastHealthStatus?: string };
 
-const DEFAULT_RATIOS = {
-  like: 0.02,
-  retweet: 0.02,
-  reply: 0.12,
-  follow: 0.02,
-  like_retweet: 0.04,
-  like_reply: 0.08,
-  like_retweet_reply: 0.08,
-  like_follow: 0.02,
-  like_retweet_follow: 0.6,
-};
+const DEFAULT_RATIOS = DEFAULT_COMBO_RATIOS;
 
 export default function NewCampaignPage() {
   const router = useRouter();
