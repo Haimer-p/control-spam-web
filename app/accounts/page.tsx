@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch, useApiPoll } from '@/lib/client';
-import { Pencil, Trash2, Plus, Gavel } from 'lucide-react';
+import { Pencil, Trash2, Plus, Gavel, RefreshCw } from 'lucide-react';
 
 type Account = {
   name: string;
@@ -11,7 +11,25 @@ type Account = {
   hasCookies: boolean;
   lastHealthStatus?: string;
   profile?: { username?: string };
+  proxyUsage?: {
+    url?: string;
+    inUse?: boolean;
+    assignedAt?: string;
+    releasedAt?: string;
+  };
+  proxyAssignment?: {
+    url?: string;
+    assignedAt?: string;
+  };
 };
+
+function proxyLabel(account: Account) {
+  const usage = account.proxyUsage;
+  if (usage?.inUse) return `Đang dùng: ${usage.url || 'Direct'}`;
+  if (account.proxyAssignment?.url) return `Cố định: ${account.proxyAssignment.url}`;
+  if (usage?.url) return `Gần nhất: ${usage.url}`;
+  return 'Chưa gán';
+}
 
 function statusBadge(s?: string) {
   if (!s) return <span className="badge bg-gray-800 text-gray-400">unknown</span>;
@@ -23,6 +41,7 @@ export default function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [appealing, setAppealing] = useState<string | null>(null);
+  const [rotatingProxy, setRotatingProxy] = useState<string | null>(null);
 
   const { data: runtimeData } = useApiPoll<{
     online: boolean;
@@ -41,6 +60,8 @@ export default function AccountsPage() {
 
   useEffect(() => {
     load().catch(console.error);
+    const timer = setInterval(() => load().catch(() => {}), 5000);
+    return () => clearInterval(timer);
   }, []);
 
   const remove = async (name: string) => {
@@ -72,6 +93,22 @@ export default function AccountsPage() {
       setMsg(e instanceof Error ? e.message : 'Error');
     } finally {
       setAppealing(null);
+    }
+  };
+
+  const rotateProxy = async (name: string) => {
+    setRotatingProxy(name);
+    setMsg('');
+    try {
+      const data = await apiFetch(`/api/accounts/${encodeURIComponent(name)}/proxy`, {
+        method: 'POST',
+      });
+      setMsg(`Đã gán proxy mới cho ${name}: ${data.proxy?.url || 'unknown'}`);
+      await load();
+    } catch (e: unknown) {
+      setMsg(`Error: ${e instanceof Error ? e.message : 'Không thể đổi proxy'}`);
+    } finally {
+      setRotatingProxy(null);
     }
   };
 
@@ -156,7 +193,21 @@ export default function AccountsPage() {
                   <span>Cookies: {a.hasCookies ? '✓' : '✗'}</span>
                   <span>Enabled: {a.enabled ? 'Yes' : 'No'}</span>
                 </div>
+                <div className="text-xs text-surface-muted break-all">
+                  Proxy: <span className={a.proxyUsage?.inUse ? 'text-green-400' : ''}>{proxyLabel(a)}</span>
+                  {a.proxyUsage?.inUse && <span className="ml-1">(đang dùng)</span>}
+                </div>
                 <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    className="btn btn-ghost flex-1 justify-center py-2 min-w-[110px]"
+                    disabled={rotatingProxy === a.name || !!a.proxyUsage?.inUse}
+                    title={a.proxyUsage?.inUse ? 'Đóng browser của account trước khi đổi proxy' : 'Lấy proxy active khác chưa được gán'}
+                    onClick={() => rotateProxy(a.name)}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${rotatingProxy === a.name ? 'animate-spin' : ''}`} />
+                    {rotatingProxy === a.name ? 'Đang lấy...' : 'Proxy khác'}
+                  </button>
                   <Link
                     href={`/accounts/${encodeURIComponent(a.name)}/edit`}
                     className="btn btn-ghost flex-1 justify-center py-2 min-w-[80px]"
@@ -194,6 +245,7 @@ export default function AccountsPage() {
                   <th className="text-left py-2 pr-4">Health</th>
                   <th className="text-left py-2 pr-4">Cookies</th>
                   <th className="text-left py-2 pr-4">Enabled</th>
+                  <th className="text-left py-2 pr-4">Proxy</th>
                   <th className="text-right py-2">Actions</th>
                 </tr>
               </thead>
@@ -205,7 +257,22 @@ export default function AccountsPage() {
                     <td className="py-3 pr-4">{statusBadge(a.lastHealthStatus)}</td>
                     <td className="py-3 pr-4">{a.hasCookies ? '✓' : '✗'}</td>
                     <td className="py-3 pr-4">{a.enabled ? 'Yes' : 'No'}</td>
+                    <td className="py-3 pr-4 max-w-[260px] text-xs break-all">
+                      <span className={a.proxyUsage?.inUse ? 'text-green-400' : 'text-surface-muted'}>
+                        {proxyLabel(a)}
+                      </span>
+                      {a.proxyUsage?.inUse && <span className="ml-1 text-green-400">• active</span>}
+                    </td>
                     <td className="py-3 text-right space-x-1">
+                      <button
+                        type="button"
+                        className="btn btn-ghost py-1 px-2 inline-flex"
+                        title={a.proxyUsage?.inUse ? 'Đóng browser của account trước khi đổi proxy' : 'Lấy proxy active khác chưa được gán'}
+                        disabled={rotatingProxy === a.name || !!a.proxyUsage?.inUse}
+                        onClick={() => rotateProxy(a.name)}
+                      >
+                        <RefreshCw className={`w-4 h-4 ${rotatingProxy === a.name ? 'animate-spin' : ''}`} />
+                      </button>
                       <Link
                         href={`/accounts/${encodeURIComponent(a.name)}/edit`}
                         className="btn btn-ghost py-1 px-2 inline-flex"

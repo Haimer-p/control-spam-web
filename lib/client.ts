@@ -41,7 +41,7 @@ export async function verifyStoredAuth(): Promise<boolean> {
   const auth = getAuthHeader();
   if (!auth) return false;
   try {
-    const res = await fetch('/api/runtime', { headers: { Authorization: auth } });
+    const res = await fetch('/api/auth', { headers: { Authorization: auth } });
     if (!res.ok) {
       clearAuth();
       return false;

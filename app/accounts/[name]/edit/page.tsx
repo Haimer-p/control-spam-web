@@ -23,21 +23,30 @@ export default function EditAccountPage() {
   const params = useParams();
   const name = decodeURIComponent(params.name as string);
   const router = useRouter();
+  const [accountName, setAccountName] = useState(name);
   const [enabled, setEnabled] = useState(true);
   const [notes, setNotes] = useState('');
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('');
   const [lastHealthAt, setLastHealthAt] = useState<string | null>(null);
   const [cookiesJson, setCookiesJson] = useState('');
+  const [twitterUsername, setTwitterUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [clearPassword, setClearPassword] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  const [credSaved, setCredSaved] = useState('');
 
   useEffect(() => {
     apiFetch(`/api/accounts/${encodeURIComponent(name)}`).then((d) => {
       const acc = d.account;
+      setAccountName(acc.name || name);
       setEnabled(acc.enabled !== false);
       setNotes(acc.notes || '');
       setHealthStatus((acc.lastHealthStatus as HealthStatus) || '');
       setLastHealthAt(acc.lastHealthAt || null);
+      setTwitterUsername(acc.twitterUsername || '');
+      setHasCredentials(!!acc.hasCredentials);
     });
   }, [name]);
 
@@ -46,16 +55,23 @@ export default function EditAccountPage() {
     setErr('');
     try {
       const body: Record<string, unknown> = {
+        newName: accountName.trim(),
         enabled,
         notes,
         lastHealthStatus: healthStatus || null,
+        twitterUsername: twitterUsername.trim(),
       };
+      if (clearPassword) body.password = '';
+      else if (newPassword) body.password = newPassword;
       if (cookiesJson.trim()) body.cookies = JSON.parse(cookiesJson);
       const res = await apiFetch(`/api/accounts/${encodeURIComponent(name)}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
       setLastHealthAt(res.account?.lastHealthAt || null);
+      setHasCredentials(!!res.account?.hasCredentials);
+      setNewPassword('');
+      setClearPassword(false);
       router.push('/accounts');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Error');
@@ -84,6 +100,20 @@ export default function EditAccountPage() {
   return (
     <div className="max-w-xl space-y-4">
       <h1 className="text-xl sm:text-2xl font-bold break-words">Sửa: {name}</h1>
+
+      <div className="card space-y-2">
+        <label className="label">Tên account nội bộ</label>
+        <input
+          className="input"
+          value={accountName}
+          onChange={(e) => setAccountName(e.target.value)}
+          maxLength={100}
+          autoComplete="off"
+        />
+        <p className="text-xs text-surface-muted">
+          Đổi tên sẽ giữ nguyên cookies, proxy cố định, lịch sử và cấu hình campaign.
+        </p>
+      </div>
 
       <div className="card space-y-3">
         <label className="label">Trạng thái health (tự chỉnh)</label>
@@ -127,6 +157,50 @@ export default function EditAccountPage() {
         <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       <div>
+        <h2 className="font-semibold mb-3">Thông tin đăng nhập Twitter/X</h2>
+        <label className="label">Username, email hoặc số điện thoại</label>
+        <div className="flex items-center gap-2">
+          <input
+            className="input flex-1"
+            value={twitterUsername}
+            onChange={(e) => setTwitterUsername(e.target.value)}
+            placeholder="@username hoặc email đăng nhập"
+            autoComplete="off"
+          />
+          {hasCredentials && (
+            <span className="badge badge-alive text-xs whitespace-nowrap">Đã lưu creds</span>
+          )}
+        </div>
+      </div>
+      <div>
+        <label className="label">Mật khẩu Twitter/X</label>
+        <input
+          className="input"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder={hasCredentials ? '••••••• (giữ nguyên)' : 'Nhập password để bật auto-login'}
+          autoComplete="new-password"
+          disabled={clearPassword}
+        />
+        <p className="text-xs text-surface-muted mt-1">
+          Password được mã hóa AES-256 trước khi lưu DB. Worker dùng khi cookie hết hạn.
+        </p>
+        {hasCredentials && (
+          <label className="label flex items-center gap-2 mt-2 text-red-300">
+            <input
+              type="checkbox"
+              checked={clearPassword}
+              onChange={(e) => {
+                setClearPassword(e.target.checked);
+                if (e.target.checked) setNewPassword('');
+              }}
+            />
+            Xóa mật khẩu Twitter/X đang lưu
+          </label>
+        )}
+      </div>
+      <div>
         <label className="label">Cookies mới (optional, paste JSON)</label>
         <textarea
           className="input min-h-[150px] sm:min-h-[160px] font-mono text-xs"
@@ -135,6 +209,7 @@ export default function EditAccountPage() {
           placeholder="Để trống nếu không đổi cookies"
         />
       </div>
+      {credSaved && <p className="text-green-400 text-sm">{credSaved}</p>}
       {err && <p className="text-accent-red text-sm">{err}</p>}
       <button
         className="btn btn-primary w-full sm:w-auto justify-center"

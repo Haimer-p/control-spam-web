@@ -101,6 +101,18 @@ export default function ControlPage() {
   const [campaignSearch, setCampaignSearch] = useState('');
   const [configSearch, setConfigSearch] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
+  const [publishingEnabled, setPublishingEnabled] = useState(false);
+  const [postTopic, setPostTopic] = useState('');
+  const [postDelayMin, setPostDelayMin] = useState(1);
+  const [postDelayMax, setPostDelayMax] = useState(5);
+  const [postCooldownHours, setPostCooldownHours] = useState(12);
+  const [maxThreadParts, setMaxThreadParts] = useState(4);
+  const [threadDelayMin, setThreadDelayMin] = useState(20);
+  const [threadDelayMax, setThreadDelayMax] = useState(45);
+  const [commentTypingMin, setCommentTypingMin] = useState(55);
+  const [commentTypingMax, setCommentTypingMax] = useState(140);
+  const [postTypingMin, setPostTypingMin] = useState(70);
+  const [postTypingMax, setPostTypingMax] = useState(170);
 
   const { data: runtime, reload } = useApiPoll<{
     online: boolean;
@@ -109,6 +121,7 @@ export default function ControlPage() {
       stopping?: boolean;
       activeSources?: ActiveSource[];
       activeAccounts?: string[];
+      runOptions?: { publishing?: { enabled?: boolean; maxThreadParts?: number } };
     };
     commands: { action: string; status: string; createdAt: string }[];
   }>('/api/runtime', 5000);
@@ -250,6 +263,20 @@ export default function ControlPage() {
       campaignIds: selectedCampaignIds,
       configFiles: selectedConfigFiles,
       maxConcurrent,
+      runOptions: {
+        publishing: {
+          enabled: publishingEnabled,
+          topic: postTopic,
+          initialDelayMinutes: { min: postDelayMin, max: postDelayMax },
+          cooldownHours: postCooldownHours,
+          maxThreadParts,
+          threadDelaySeconds: { min: threadDelayMin, max: threadDelayMax },
+        },
+        typing: {
+          comment: { min: commentTypingMin, max: commentTypingMax },
+          post: { min: postTypingMin, max: postTypingMax },
+        },
+      },
     });
   };
 
@@ -287,6 +314,11 @@ export default function ControlPage() {
               : ''}
           </div>
         ) : null}
+        {runtime?.runtime?.running && (
+          <div className="text-xs text-surface-muted pt-1">
+            AI posting: {runtime.runtime.runOptions?.publishing?.enabled ? 'Bật' : 'Tắt'}
+          </div>
+        )}
       </div>
 
       <div className="card space-y-4">
@@ -423,6 +455,93 @@ export default function ControlPage() {
                 : 'Mặc định = số account được chọn'}
             </p>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-surface-border p-4 space-y-4">
+          <label className="flex items-center gap-2 font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={publishingEnabled}
+              onChange={(e) => setPublishingEnabled(e.target.checked)}
+            />
+            Tự đăng bài AI khi chạy bot
+          </label>
+
+          {publishingEnabled && (
+            <div className="space-y-4">
+              <div>
+                <label className="label">Chủ đề / yêu cầu cho bài đăng</label>
+                <textarea
+                  className="input min-h-[90px]"
+                  value={postTopic}
+                  onChange={(e) => setPostTopic(e.target.value)}
+                  placeholder="Ví dụ: phân tích ngắn về xu hướng memecoin; nếu để trống AI dùng campaign và keywords"
+                />
+              </div>
+
+              <div className="form-grid-2">
+                <div>
+                  <label className="label">Đăng sau login (phút, min)</label>
+                  <input className="input" type="number" min={0} max={120} value={postDelayMin}
+                    onChange={(e) => setPostDelayMin(+e.target.value || 0)} />
+                </div>
+                <div>
+                  <label className="label">Đăng sau login (phút, max)</label>
+                  <input className="input" type="number" min={0} max={120} value={postDelayMax}
+                    onChange={(e) => setPostDelayMax(+e.target.value || 0)} />
+                </div>
+                <div>
+                  <label className="label">Cooldown giữa các lần đăng (giờ)</label>
+                  <input className="input" type="number" min={1} max={168} value={postCooldownHours}
+                    onChange={(e) => setPostCooldownHours(+e.target.value || 1)} />
+                </div>
+                <div>
+                  <label className="label">Số phần thread tối đa</label>
+                  <input className="input" type="number" min={1} max={8} value={maxThreadParts}
+                    onChange={(e) => setMaxThreadParts(+e.target.value || 1)} />
+                </div>
+                <div>
+                  <label className="label">Delay giữa phần thread (giây, min)</label>
+                  <input className="input" type="number" min={5} max={300} value={threadDelayMin}
+                    onChange={(e) => setThreadDelayMin(+e.target.value || 5)} />
+                </div>
+                <div>
+                  <label className="label">Delay giữa phần thread (giây, max)</label>
+                  <input className="input" type="number" min={5} max={300} value={threadDelayMax}
+                    onChange={(e) => setThreadDelayMax(+e.target.value || 5)} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-surface-border p-4 space-y-3">
+          <h4 className="font-medium">Tốc độ nhập chữ trong lần chạy này</h4>
+          <div className="form-grid-2">
+            <div>
+              <label className="label">Comment min (ms/ký tự)</label>
+              <input className="input" type="number" min={10} max={500} value={commentTypingMin}
+                onChange={(e) => setCommentTypingMin(+e.target.value || 10)} />
+            </div>
+            <div>
+              <label className="label">Comment max (ms/ký tự)</label>
+              <input className="input" type="number" min={10} max={500} value={commentTypingMax}
+                onChange={(e) => setCommentTypingMax(+e.target.value || 10)} />
+            </div>
+            <div>
+              <label className="label">Post/thread min (ms/ký tự)</label>
+              <input className="input" type="number" min={10} max={500} value={postTypingMin}
+                onChange={(e) => setPostTypingMin(+e.target.value || 10)} />
+            </div>
+            <div>
+              <label className="label">Post/thread max (ms/ký tự)</label>
+              <input className="input" type="number" min={10} max={500} value={postTypingMax}
+                onChange={(e) => setPostTypingMax(+e.target.value || 10)} />
+            </div>
+          </div>
+          <p className="text-xs text-surface-muted">
+            Worker thêm các khoảng nghỉ ngắn khi nhập. Cooldown và giới hạn thread vẫn được áp dụng để tránh hoạt động dồn dập.
+          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">

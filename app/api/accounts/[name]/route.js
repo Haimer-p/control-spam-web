@@ -11,7 +11,10 @@ export async function GET(request, { params }) {
       account: {
         ...acc,
         cookiesEncrypted: undefined,
+        passwordEncrypted: undefined,
         hasCookies: db.accountHasCookies(acc),
+        hasCredentials: db.accountHasCredentials(acc),
+        twitterUsername: acc.twitterUsername || '',
       },
     });
   } catch (e) {
@@ -34,12 +37,43 @@ export async function PATCH(request, { params }) {
         body.lastHealthAt = new Date().toISOString();
       }
     }
+
+    // Handle credential update
+    if (body.twitterUsername !== undefined || body.password !== undefined) {
+      if (body.twitterUsername !== undefined && typeof body.twitterUsername !== 'string') {
+        return error('twitterUsername must be a string', 400);
+      }
+      if (body.password !== undefined && typeof body.password !== 'string') {
+        return error('password must be a string', 400);
+      }
+      if (body.twitterUsername !== undefined) {
+        body.twitterUsername = String(body.twitterUsername || '').trim();
+      }
+      // body.password will be encrypted in updateAccount
+    }
+
     const db = await getDb();
-    const acc = await db.updateAccount(params.name, body);
+    const requestedName = body.newName !== undefined ? String(body.newName).trim() : params.name;
+    if (!requestedName) return error('newName cannot be empty', 400);
+    if (requestedName !== params.name) {
+      await db.renameAccount(params.name, requestedName);
+    }
+    delete body.newName;
+    const acc = await db.updateAccount(requestedName, body);
     if (!acc) return error('Not found', 404);
-    return json({ account: { ...acc, cookiesEncrypted: undefined, hasCookies: db.accountHasCookies(acc) } });
+    return json({
+      account: {
+        ...acc,
+        cookiesEncrypted: undefined,
+        passwordEncrypted: undefined,
+        hasCookies: db.accountHasCookies(acc),
+        hasCredentials: db.accountHasCredentials(acc),
+        twitterUsername: acc.twitterUsername || '',
+      },
+    });
   } catch (e) {
-    return error(e.message, 500);
+    const status = e.code === 'ACCOUNT_EXISTS' || e.code === 'ACCOUNT_BUSY' ? 409 : 500;
+    return error(e.message, status);
   }
 }
 

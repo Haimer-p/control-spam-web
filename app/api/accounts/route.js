@@ -9,7 +9,27 @@ export async function GET(request) {
     const safe = accounts.map((a) => ({
       ...a,
       cookiesEncrypted: undefined,
+      passwordEncrypted: undefined,
+      proxyUsage: a.proxyUsage
+        ? {
+            ...a.proxyUsage,
+            url: String(a.proxyUsage.url || '').replace(
+              /\/\/([^:@/]+):([^@/]+)@/,
+              '//$1:***@'
+            ),
+          }
+        : undefined,
+      proxyAssignment: a.proxyAssignment
+        ? {
+            ...a.proxyAssignment,
+            url: String(a.proxyAssignment.url || '').replace(
+              /\/\/([^:@/]+):([^@/]+)@/,
+              '//$1:***@'
+            ),
+          }
+        : undefined,
       hasCookies: db.accountHasCookies(a),
+      hasCredentials: db.accountHasCredentials(a),
     }));
     return json({ accounts: safe });
   } catch (e) {
@@ -21,12 +41,26 @@ export async function POST(request) {
   if (!checkAuth(request)) return unauthorized();
   try {
     const body = await request.json();
-    const { name, cookies, enabled, notes } = body;
+    const { name, cookies, enabled, notes, twitterUsername, password } = body;
     if (!name?.trim()) return error('name required');
-    if (!cookies?.length) return error('cookies array required');
+    if (cookies !== undefined && !Array.isArray(cookies)) return error('cookies must be an array');
     const db = await getDb();
-    const acc = await db.saveAccountCookies(name.trim(), cookies, { enabled, notes });
-    return json({ account: { ...acc, cookiesEncrypted: undefined, hasCookies: true } }, 201);
+    const acc = await db.createAccount(name.trim(), {
+      cookies,
+      enabled,
+      notes,
+      twitterUsername,
+      password,
+    });
+    return json({
+      account: {
+        ...acc,
+        cookiesEncrypted: undefined,
+        passwordEncrypted: undefined,
+        hasCookies: db.accountHasCookies(acc),
+        hasCredentials: db.accountHasCredentials(acc),
+      },
+    }, 201);
   } catch (e) {
     return error(e.message, 500);
   }

@@ -10,6 +10,7 @@ import {
   Play,
   Stethoscope,
   Bot,
+  Shield,
   X,
 } from 'lucide-react';
 
@@ -19,6 +20,7 @@ const nav = [
   { href: '/campaigns/new', label: 'New Token', icon: Sparkles, exact: true },
   { href: '/accounts', label: 'Accounts', icon: Users },
   { href: '/health', label: 'Health Check', icon: Stethoscope },
+  { href: '/proxies', label: 'Proxies', icon: Shield },
   { href: '/control', label: 'Control', icon: Play },
 ];
 

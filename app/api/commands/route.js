@@ -2,6 +2,49 @@ const { getDb } = require('../../../lib/db');
 const { checkAuth, unauthorized, json, error } = require('../../../lib/api');
 const { validateBatchSelection } = require('../../../lib/batch-profiles');
 
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeRange(input, defaults, min, max) {
+  let low = clampNumber(input?.min, defaults.min, min, max);
+  let high = clampNumber(input?.max, defaults.max, min, max);
+  if (low > high) [low, high] = [high, low];
+  return { min: low, max: high };
+}
+
+function normalizeRunOptions(value) {
+  const input = value && typeof value === 'object' ? value : {};
+  const publishing = input.publishing || {};
+  const typing = input.typing || {};
+  return {
+    publishing: {
+      enabled: publishing.enabled === true,
+      topic: String(publishing.topic || '').trim().slice(0, 1000),
+      initialDelayMinutes: normalizeRange(
+        publishing.initialDelayMinutes,
+        { min: 1, max: 5 },
+        0,
+        120
+      ),
+      cooldownHours: clampNumber(publishing.cooldownHours, 12, 1, 168),
+      maxThreadParts: Math.round(clampNumber(publishing.maxThreadParts, 4, 1, 8)),
+      threadDelaySeconds: normalizeRange(
+        publishing.threadDelaySeconds,
+        { min: 20, max: 45 },
+        5,
+        300
+      ),
+    },
+    typing: {
+      comment: normalizeRange(typing.comment, { min: 55, max: 140 }, 10, 500),
+      post: normalizeRange(typing.post, { min: 70, max: 170 }, 10, 500),
+    },
+  };
+}
+
 export async function POST(request) {
   if (!checkAuth(request)) return unauthorized();
   try {
@@ -15,6 +58,7 @@ export async function POST(request) {
       accountNames,
       configFile,
       maxConcurrent,
+      runOptions,
     } = body;
     if (!action) return error('action required');
 
@@ -50,14 +94,26 @@ export async function POST(request) {
         return error('campaignIds, campaignId, configFiles, or configFile required for start');
       }
 
+      const requestedConcurrency = maxConcurrent == null ? undefined : Number(maxConcurrent);
+      if (
+        requestedConcurrency != null &&
+        (!Number.isInteger(requestedConcurrency) || requestedConcurrency < 1)
+      ) {
+        return error('maxConcurrent must be a positive integer', 400);
+      }
+      const concurrencyLimit = Math.max(1, Math.min(10, batchPreview?.totalAccounts || 10));
+      const normalizedConcurrency = requestedConcurrency == null
+        ? undefined
+        : Math.min(requestedConcurrency, concurrencyLimit);
+
       const cmd = await db.createCommand({
         action,
         campaignId: campaignId || undefined,
         campaignIds: ids,
         configFiles: files,
-        maxConcurrentOverride:
-          maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
+        maxConcurrentOverride: normalizedConcurrency,
         runProfile: runProfile || 'vua',
+        runOptions: normalizeRunOptions(runOptions),
         accountNames: names,
         configFile,
       });
@@ -100,6 +156,7 @@ export async function POST(request) {
       maxConcurrentOverride:
         maxConcurrent != null ? parseInt(String(maxConcurrent), 10) : undefined,
       runProfile: runProfile || 'vua',
+      runOptions: normalizeRunOptions(runOptions),
       accountNames: names,
       configFile,
     });

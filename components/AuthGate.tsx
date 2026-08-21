@@ -83,7 +83,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             onClick={() => {
               setErr('');
               setAuth(user, pass);
-              fetch('/api/runtime', {
+              fetch('/api/auth', {
                 headers: { Authorization: `Basic ${btoa(`${user}:${pass}`)}` },
               })
                 .then((r) => {
